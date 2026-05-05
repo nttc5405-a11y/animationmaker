@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>火場派遣動畫產生器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+
+:root {
+  --bg:    #07090C;
+  --bg2:   #0A0D12;
+  --bg3:   #0D1118;
+  --panel: #0B0E14;
+  --bdr:   #141E2A;
+  --bdr2:  #1A2636;
+  --fire:  #FF4500;
+  --amber: #FFA040;
+  --warn:  #FFCC00;
+  --safe:  #00CC66;
+  --blue:  #3399FF;
+  --text:  #D8E8F5;
+  --dim:   #7A9BB5;
+  --mono:  'Share Tech Mono', monospace;
+  --sans:  'Noto Sans TC', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--mono);
+       width:100vw; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+/* ── SCREENS ── */
+#screen-paste, #screen-anim { width:100%; height:100%; display:flex; flex-direction:column; }
+#screen-anim { display:none; }
+
+/* ══════════════════════════════════
+   PASTE SCREEN
+══════════════════════════════════ */
+#screen-paste {
+  align-items:center; justify-content:center; gap:28px;
+  background: radial-gradient(ellipse at 50% 30%, #0F1A10 0%, var(--bg) 70%);
+}
+
+.paste-logo {
+  display:flex; align-items:center; gap:14px;
+}
+.paste-logo .dot {
+  width:10px; height:10px; border-radius:50%; background:var(--fire);
+  box-shadow: 0 0 16px var(--fire); animation: blink 1.2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+.paste-logo h1 {
+  font-family:var(--sans); font-size:20px; font-weight:900;
+  color:var(--fire); letter-spacing:4px; text-transform:uppercase;
+}
+.paste-logo .sub { font-size:9px; color:var(--dim); letter-spacing:3px; margin-top:3px; }
+
+.paste-box-wrap {
+  width: min(760px, 92vw);
+  display:flex; flex-direction:column; gap:10px;
+}
+
+.paste-hint {
+  font-size:10px; color:#7A9BB5; letter-spacing:2px;
+  display:flex; align-items:center; gap:8px;
+}
+.paste-hint::before {
+  content:''; display:block; width:24px; height:1px; background:#2A3E55;
+}
+
+textarea#paste-input {
+  width:100%; height:260px;
+  background:var(--bg3); border:1px solid var(--bdr2);
+  border-radius:6px; color:var(--text); font-family:var(--mono);
+  font-size:11px; line-height:1.7; padding:16px 18px;
+  resize:none; outline:none;
+  transition: border-color .2s;
+}
+textarea#paste-input:focus { border-color: #2A4060; }
+textarea#paste-input::placeholder { color: #1E3040; }
+
+.paste-actions { display:flex; gap:10px; align-items:center; }
+
+.btn-gen {
+  background: linear-gradient(135deg, #1A0800, #0A0C0F);
+  border: 1px solid var(--fire);
+  color: var(--fire); font-family:var(--mono); font-size:12px;
+  letter-spacing:2px; padding:10px 28px; border-radius:4px;
+  cursor:pointer; transition:all .2s;
+}
+.btn-gen:hover { background: rgba(255,69,0,.15); box-shadow: 0 0 20px rgba(255,69,0,.2); }
+
+.btn-demo {
+  background:none; border:1px solid #2A3E55; color:#7A9BB5;
+  font-family:var(--mono); font-size:10px; letter-spacing:1px;
+  padding:10px 18px; border-radius:4px; cursor:pointer; transition:all .2s;
+}
+.btn-demo:hover { border-color:var(--dim); color:var(--text); }
+
+#parse-error {
+  font-size:10px; color:#FF4444; letter-spacing:1px;
+  min-height:16px; padding-left:4px;
+}
+
+.paste-footer {
+  font-size:9px; color:#4A6880; letter-spacing:1px; text-align:center;
+}
+
+/* ══════════════════════════════════
+   ANIM SCREEN
+══════════════════════════════════ */
+.hdr {
+  display:flex; align-items:center; gap:12px;
+  padding:8px 22px; flex-shrink:0;
+  background:linear-gradient(90deg,#110400,var(--bg) 70%);
+  border-bottom:1px solid #FF450028;
+}
+.hdr-dot { width:7px; height:7px; border-radius:50%; background:var(--fire);
+  box-shadow:0 0 8px var(--fire); animation:blink 1.2s infinite; }
+.hdr-id  { font-size:12px; color:var(--fire); letter-spacing:3px; }
+.hdr-sep { color:#3A5060; }
+.hdr-sub { font-size:10px; color:#7A9BB5; letter-spacing:2px; }
+.hdr-time { margin-left:auto; font-size:24px; color:var(--amber); letter-spacing:5px;
+  text-shadow:0 0 20px rgba(255,160,64,.4); }
+.btn-back {
+  margin-left:16px; background:none; border:1px solid var(--bdr2); color:var(--dim);
+  font-family:var(--mono); font-size:9px; letter-spacing:1px;
+  padding:4px 12px; border-radius:3px; cursor:pointer; transition:all .15s;
+}
+.btn-back:hover { border-color:var(--dim); color:var(--text); }
+
+.canvas { flex:1; display:grid; grid-template-columns:1fr 260px; overflow:hidden; min-height:0; }
+
+/* Map */
+.map-wrap {
+  position:relative; overflow:hidden;
+  background: #07090C;
+}
+.map-wrap::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,69,0,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,69,0,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+svg#scene { display:block; width:100%; height:100%; }
+
+/* Side */
+.side {
+  background:var(--panel); border-left:1px solid var(--bdr);
+  display:flex; flex-direction:column; padding:14px 12px; gap:8px; overflow:hidden;
+}
+.side-lbl { font-size:8px; letter-spacing:3px; color:#5A7A94;
+  text-transform:uppercase; padding-bottom:6px; border-bottom:1px solid var(--bdr); flex-shrink:0; }
+
+.team-pill {
+  border:1px solid; border-radius:3px; padding:8px 10px;
+  display:flex; align-items:center; gap:8px;
+  transition:all .3s ease; opacity:0; transform:translateX(14px);
+  position:relative; overflow:hidden; flex-shrink:0;
+}
+.team-pill.show { opacity:1; transform:translateX(0); }
+.team-pill::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+.team-pill.hot  { border-color:#FF450055; background:linear-gradient(90deg,#160400,var(--panel) 80%); color:#FF9070; }
+.team-pill.hot::before  { background:var(--fire); box-shadow:0 0 6px var(--fire); animation:sp 1.5s ease-in-out infinite; }
+.team-pill.warn { border-color:#FFCC0055; background:linear-gradient(90deg,#151000,var(--panel) 80%); color:#FFD840; }
+.team-pill.warn::before { background:var(--warn); box-shadow:0 0 6px var(--warn); animation:sp 1s ease-in-out infinite; }
+.team-pill.standby { border-color:#2A486655; background:var(--panel); color:#7A9BB5; }
+.team-pill.standby::before { background:#2E5A7A; }
+.team-pill.out  { border-color:#00884455; background:var(--panel); color:#44BB77; }
+.team-pill.out::before  { background:var(--safe); }
+@keyframes sp { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+.pill-names { flex:1; min-width:0; }
+.pill-name { font-size:11px; font-weight:700; font-family:var(--sans); line-height:1.4; }
+.pill-sub  { font-size:8px; color:#5A7A94; letter-spacing:1px; margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.air-mini  { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; }
+.air-v { font-size:11px; letter-spacing:1px; }
+.air-t { width:28px; height:3px; background:#0D1018; border-radius:2px; overflow:hidden; }
+.air-b { height:100%; border-radius:2px; transition:width .7s,background .5s; }
+.hi { background:var(--safe); } .mi { background:#FFAA00; }
+.lo { background:#FF2222; animation:lof .5s ease-in-out infinite; }
+@keyframes lof { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.ticker { margin-top:auto; flex-shrink:0; background:#060810;
+  border:1px solid var(--bdr); border-radius:3px; padding:8px 10px;
+  font-size:9px; color:#6A8AA4; line-height:1.8; }
+.ev.hot-ev  { color:#FF7755; }
+.ev.warn-ev { color:#DDAA00; }
+.ev.out-ev  { color:#33BB66; }
+
+/* Playbar */
+.playbar {
+  display:flex; align-items:center; gap:10px;
+  padding:7px 18px; background:#050708; border-top:1px solid #0E1520; flex-shrink:0;
+}
+.pbtn { background:none; border:1px solid #2A3E55; color:#7A9BB5;
+  padding:5px 14px; border-radius:3px; font-family:var(--mono); font-size:10px;
+  cursor:pointer; transition:all .15s; letter-spacing:1px; }
+.pbtn:hover { border-color:var(--fire); color:var(--fire); }
+.pbtn.on    { border-color:var(--fire); color:var(--fire); background:rgba(255,69,0,.08); }
+.prog { flex:1; height:2px; background:#1E3045; border-radius:1px; cursor:pointer; }
+.prog-fill { height:100%; border-radius:1px; background:linear-gradient(90deg,var(--fire),var(--amber)); transition:width .3s; }
+.spd { background:#060810; border:1px solid #2A3E55; color:#7A9BB5;
+  font-family:var(--mono); font-size:9px; padding:4px 6px; border-radius:3px; cursor:pointer; }
+.step-lbl { font-size:9px; color:#5A7A94; min-width:44px; text-align:right; }
+</style>
+</head>
+<body>
+
+<!-- ══ PASTE SCREEN ══ -->
+<div id="screen-paste">
+  <div class="paste-logo">
+    <div class="dot"></div>
+    <div>
+      <h1>派遣動畫產生器</h1>
+      <div class="sub">台東縣消防局 · 火場人員安全管制系統</div>
+    </div>
+  </div>
+
+  <div class="paste-box-wrap">
+    <div class="paste-hint">從 Google Sheets 複製試算表欄位，貼入下方</div>
+    <textarea id="paste-input" spellcheck="false"
+      placeholder="時間	動作	詳情	現場總數	待命人數	熱區部署&#10;11:09:32	管制指派	🚀 [1F] 指派：謝醫仲、陳育宏 (滅火攻擊) (氣壓:250b)	3	0	3&#10;..."></textarea>
+    <div id="parse-error"></div>
+    <div class="paste-actions">
+      <button class="btn-gen" onclick="generate()">▶ 產生動畫</button>
+      <button class="btn-demo" onclick="loadDemo()">載入範例資料</button>
+    </div>
+  </div>
+  <div class="paste-footer">支援欄位：時間 · 動作 · 詳情 · 現場總數 · 待命人數 · 熱區部署</div>
+</div>
+
+<!-- ══ ANIM SCREEN ══ -->
+<div id="screen-anim">
+  <div class="hdr">
+    <div class="hdr-dot"></div>
+    <div class="hdr-id" id="hdr-id">—</div>
+    <div class="hdr-sep">|</div>
+    <div class="hdr-sub" id="hdr-sub">台東縣消防局</div>
+    <div class="hdr-time" id="clock">—:—</div>
+    <button class="btn-back" onclick="backToPaste()">← 返回</button>
+  </div>
+
+  <div class="canvas">
+    <div class="map-wrap">
+      <svg id="scene" viewBox="0 0 900 620" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="gr" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="gy" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <marker id="ar"   markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#FF4500"/></marker>
+          <marker id="ay"   markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#FFCC00"/></marker>
+          <marker id="ab"   markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#3399FF"/></marker>
+          <marker id="ag"   markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#00CC66"/></marker>
+          <marker id="adim" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#445"/></marker>
+          <pattern id="hatch" patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="10" stroke="#FF4500" stroke-width="1.2" stroke-opacity=".18"/>
+          </pattern>
+        </defs>
+
+        <!-- Road -->
+        <rect x="0" y="470" width="900" height="90" fill="#0C0F14"/>
+        <line x1="0" y1="510" x2="900" y2="510" stroke="#1A2030" stroke-width="1" stroke-dasharray="24,18"/>
+        <line x1="0" y1="472" x2="900" y2="472" stroke="#1E2A38" stroke-width="1.5"/>
+
+        <!-- Standby zone right -->
+        <rect x="730" y="490" width="150" height="50" rx="4"
+          fill="none" stroke="#3399FF18" stroke-width="1.5" stroke-dasharray="5,4"/>
+        <text x="805" y="520" text-anchor="middle" font-size="9" fill="#3399FF55"
+          letter-spacing="2" font-family="Share Tech Mono,monospace">待命區</text>
+
+        <!-- Building shadow -->
+        <rect x="90" y="68" width="640" height="400" rx="3" fill="#000" opacity=".6"/>
+        <!-- Building body -->
+        <rect x="80" y="60" width="640" height="400" rx="3" fill="#0D1218" stroke="#1E2C3A" stroke-width="2"/>
+        <!-- 2F -->
+        <rect x="80" y="60" width="640" height="200" rx="3" fill="#0B1016"/>
+        <text x="400" y="170" text-anchor="middle" font-size="13" fill="#2E4560"
+          letter-spacing="4" font-family="Share Tech Mono,monospace">2F</text>
+        <!-- floor line -->
+        <line x1="80" y1="260" x2="720" y2="260" stroke="#1A2838" stroke-width="2"/>
+        <!-- 1F fire zone -->
+        <rect id="fire-zone" x="80" y="260" width="640" height="200" fill="url(#hatch)" opacity="0"/>
+        <text x="400" y="370" text-anchor="middle" font-size="13" fill="#2E4560"
+          letter-spacing="4" font-family="Share Tech Mono,monospace">1F</text>
+        <!-- Door -->
+        <rect x="364" y="457" width="72" height="5" rx="2" fill="#FF450025"/>
+
+        <!-- Fire embers -->
+        <g id="fire-embers" opacity="0">
+          <text x="200" y="350" font-size="22">🔥</text>
+          <text x="380" y="400" font-size="18">🔥</text>
+          <text x="560" y="340" font-size="14">🔥</text>
+        </g>
+
+        <!-- Face labels -->
+        <text x="400" y="453" text-anchor="middle" font-size="10" fill="#FF6030" opacity=".9"
+          letter-spacing="2" font-family="Share Tech Mono,monospace">第一面（前）</text>
+        <text x="400" y="50" text-anchor="middle" font-size="10" fill="#4A6880"
+          letter-spacing="2" font-family="Share Tech Mono,monospace">第三面（後）</text>
+        <text x="64" y="265" text-anchor="end" font-size="10" fill="#3399FF" opacity=".9"
+          letter-spacing="2" font-family="Share Tech Mono,monospace">第二面（左）</text>
+        <text x="736" y="265" text-anchor="start" font-size="10" fill="#4A6880"
+          letter-spacing="2" font-family="Share Tech Mono,monospace">第四面（右）</text>
+
+        <!-- Dynamic SVG elements injected by JS -->
+        <g id="dynamic-layer"></g>
+      </svg>
+    </div>
+
+    <div class="side">
+      <div class="side-lbl">現場人員</div>
+      <div id="pills"></div>
+      <div class="ticker" id="ticker"><div class="ev">— —</div></div>
+    </div>
+  </div>
+
+  <div class="playbar">
+    <button class="pbtn" id="playBtn" onclick="togglePlay()">▶ 播放</button>
+    <button class="pbtn" onclick="resetAnim()">↺</button>
+    <div class="prog" id="prog" onclick="seekProg(event)">
+      <div class="prog-fill" id="progFill" style="width:0%"></div>
+    </div>
+    <select class="spd" id="spd">
+      <option value="2200">×1</option>
+      <option value="1467" selected>×1.5</option>
+      <option value="900">×2.5</option>
+      <option value="350">×7</option>
+    </select>
+    <div class="step-lbl" id="stepLbl">0 / 0</div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────
+// POSITION MAP  位置名稱 → SVG 座標
+// ──────────────────────────────────────────────
+const POS = {
+  '第一面(前)':  { x:480, y:464 },
+  '第一面（前）': { x:480, y:464 },
+  '第二面(左)':  { x:22,  y:280 },
+  '第二面（左）': { x:22,  y:280 },
+  '第三面(後)':  { x:400, y:75  },
+  '第三面（後）': { x:400, y:75  },
+  '第四面(右)':  { x:858, y:280 },
+  '第四面（右）': { x:858, y:280 },
+  '1F':         { x:260, y:360 },
+  '2F':         { x:400, y:160 },
+  'RF':         { x:400, y:100 },
+  '待命區':      { x:805, y:520 },
+  '待命':        { x:805, y:520 },
+  'standby':    { x:805, y:520 },
+};
+
+// ──────────────────────────────────────────────
+// COLOUR MAP  task → colour key
+// ──────────────────────────────────────────────
+const TASK_COL = {
+  '滅火攻擊': { stroke:'#FF4500', fill:'#1A0400', text:'#FF8866', sub:'#AA4422', marker:'ar' },
+  '人命搜救': { stroke:'#FFCC00', fill:'#181000', text:'#FFDD44', sub:'#AA8800', marker:'ay' },
+  '周界防護': { stroke:'#3399FF', fill:'#000A1A', text:'#55AAEE', sub:'#336699', marker:'ab' },
+  '幕僚作業': { stroke:'#FF450060', fill:'#0C0800', text:'#DD7744', sub:'#885533', marker:'adim' },
+  '待命集結': { stroke:'#445566', fill:'#090B10', text:'#6688AA', sub:'#445566', marker:'adim' },
+  '人員搜救': { stroke:'#FFCC00', fill:'#181000', text:'#FFDD44', sub:'#AA8800', marker:'ay' },
+  'default':  { stroke:'#3399FF', fill:'#000A1A', text:'#55AAEE', sub:'#336699', marker:'ab' },
+};
+
+// ──────────────────────────────────────────────
+// DEMO DATA
+// ──────────────────────────────────────────────
+const DEMO = `時間\t動作\t詳情\t現場總數\t待命人數\t熱區部署
+11:02:24\t系統\t📥 已成功載入今日上班名冊\t0\t0\t0
+11:03:00\t人員報到\t✅ [點名報到] 東河分隊 吳慶東\t0\t0\t0
+11:03:01\t人員報到\t✅ [點名報到] 東河分隊 楊宗儒\t0\t0\t0
+11:03:02\t人員報到\t✅ [點名報到] 東河分隊 陳柏宇\t0\t0\t0
+11:03:02\t人員報到\t✅ [點名報到] 東河分隊 葉琨鈿\t0\t0\t0
+11:03:03\t人員報到\t✅ [點名報到] 東河分隊 謝醫仲\t0\t0\t0
+11:03:03\t人員報到\t✅ [點名報到] 東河分隊 陳育宏\t0\t0\t0
+11:03:04\t人員報到\t✅ [點名報到] 東河分隊 郝奕靖\t0\t0\t0
+11:03:05\t人員報到\t✅ [點名報到] 東河分隊 鄭亦翔\t0\t0\t0
+11:04:20\t管制指派\t🚀 [第一面(前)] 指派：吳慶東 (幕僚作業)\t1\t0\t1
+11:06:29\t人員報到\t✅ [點名報到] 都蘭分隊 賴芳瑜\t1\t0\t1
+11:06:30\t人員報到\t✅ [點名報到] 都蘭分隊 謝明家\t1\t0\t1
+11:06:31\t人員報到\t✅ [點名報到] 都蘭分隊 余哲維\t1\t0\t1
+11:06:32\t人員報到\t✅ [點名報到] 都蘭分隊 郭庭瑜\t1\t0\t1
+11:09:32\t管制指派\t🚀 [1F] 指派：謝醫仲、陳育宏 (滅火攻擊) (氣壓:250b)\t3\t0\t3
+11:11:11\t管制指派\t🚀 [1F] 指派：葉琨鈿、余哲維 (人命搜救) (氣壓:250b)\t5\t0\t5
+11:12:14\t系統建置\t📝 手動新增人員: [東河義消] 高崇翔\t7\t0\t7
+11:12:35\t管制指派\t🚀 [1F] 指派：陳柏宇、高崇翔 (周界防護) (氣壓:250b)\t7\t0\t7
+11:13:47\t壓力更新\t📲 謝醫仲、陳育宏 更新氣壓為 260b\t7\t0\t7
+11:14:39\t位置變更\t📍 陳柏宇、高崇翔：[1F] ➔ [第二面(左)] (氣壓:230b)\t7\t0\t7
+11:15:27\t管制指派\t🚀 [第一面(前)] 指派：郝奕靖 (待命集結)\t8\t0\t8
+11:17:08\t壓力更新\t📲 葉琨鈿、余哲維 更新氣壓為 220b\t8\t0\t8
+11:17:14\t壓力更新\t📲 葉琨鈿、余哲維 更新氣壓為 230b\t8\t0\t8
+11:18:10\t壓力更新\t📲 謝醫仲、陳育宏 更新氣壓為 200b\t8\t0\t8
+11:18:51\t壓力更新\t📲 陳柏宇、高崇翔 更新氣壓為 200b\t8\t0\t8
+11:19:56\t壓力更新\t📲 葉琨鈿、余哲維 更新氣壓為 230b\t8\t0\t8
+11:20:48\t管制指派\t🚀 [待命區] 指派：謝明家、賴芳瑜 (待命集結)\t10\t2\t8
+11:27:19\t壓力更新\t📲 謝醫仲、陳育宏 更新氣壓為 120b\t10\t2\t8
+11:29:10\t定期回報\t⏳ [第二面(左)] 陳柏宇、高崇翔 已入室 10 分鐘，請回報氣量！\t10\t2\t8
+11:29:10\t氣量警告\t⚠️ [第二面(左)] 陳柏宇、高崇翔 壓力低於 100b (目前:97b)\t10\t2\t8
+11:30:10\t氣量警告\t⚠️ [1F] 謝醫仲、陳育宏 壓力低於 100b (目前:92b)\t10\t2\t8
+11:30:10\t定期回報\t⏳ [1F] 葉琨鈿、余哲維 已入室 10 分鐘，請回報氣量！\t10\t2\t8
+11:31:08\t安全撤出\t🔙 謝醫仲、陳育宏 從 [1F] 撤出至 [待命區] (氣壓:82b) (氣瓶解除)\t10\t4\t6
+11:32:08\t案件結束\t🛑 案件宣告結束，系統準備凍結並更改分頁名稱。\t10\t4\t6`;
+
+// ──────────────────────────────────────────────
+// PARSER  TSV → event array
+// ──────────────────────────────────────────────
+function parseTSV(raw) {
+  const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l);
+  if (lines.length < 2) throw new Error('資料不足，至少需要標題列 + 1 筆記錄');
+
+  // detect header
+  const first = lines[0].split('\t');
+  const hasHeader = isNaN(first[0].charAt(0));
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  const events = [];
+  for (const line of dataLines) {
+    const cols = line.split('\t');
+    if (cols.length < 3) continue;
+    const [time, action, detail, total='0', standby='0', hot='0'] = cols;
+    if (!time.match(/^\d{1,2}:\d{2}/)) continue;
+    events.push({
+      time: time.substring(0,5),
+      action: action.trim(),
+      detail: detail.replace(/^[^\s\w\u4e00-\u9fff]*\s*/, '').trim(),
+      total: parseInt(total)||0,
+      standby: parseInt(standby)||0,
+      hot: parseInt(hot)||0,
+    });
+  }
+  if (events.length === 0) throw new Error('找不到有效的事件資料，請確認格式');
+  return events;
+}
+
+// ──────────────────────────────────────────────
+// EXTRACT helpers
+// ──────────────────────────────────────────────
+function extractBracket(str) {
+  const m = str.match(/\[([^\]]+)\]/);
+  return m ? m[1] : null;
+}
+
+function extractNames(str) {
+  // Look for Chinese names after 指派：or before (任務)
+  // Pattern: 姓名 or 姓名、姓名
+  const m = str.match(/(?:指派：|📍\s*)([^(（[\]➔]+?)(?:\s*[\(（]|$)/);
+  if (!m) return [];
+  return m[1].split(/[、,，]/).map(s => s.trim()).filter(s => s.length >= 2 && s.length <= 5);
+}
+
+function extractTask(str) {
+  const m = str.match(/[（(]([^)）氣壓:：\d]+)[)）]/);
+  return m ? m[1].trim() : '';
+}
+
+function extractAir(str) {
+  const m = str.match(/(?:氣壓[:：]|更新氣壓為\s*|目前[:：])(\d+)b/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function extractFrom(str) {
+  const m = str.match(/\[([^\]]+)\]\s*➔/);
+  return m ? m[1] : null;
+}
+
+function extractTo(str) {
+  const m = str.match(/➔\s*\[([^\]]+)\]/);
+  return m ? m[1] : null;
+}
+
+function extractWithdrawTo(str) {
+  const m = str.match(/撤出至\s*\[([^\]]+)\]/);
+  return m ? m[1] : null;
+}
+
+// ──────────────────────────────────────────────
+// BUILD KEYFRAMES from events
+// ──────────────────────────────────────────────
+function buildKeyframes(events) {
+  // State: map of groupKey → { names[], loc, task, air, status }
+  const state = {};
+  const kfs = [];
+  let fireVisible = false;
+  let incidentId = '';
+
+  // Try to extract incident ID from last "案件結束" or first event time
+  const lastEv = events[events.length - 1];
+  incidentId = events[0].time.replace(':','') + '_' + (lastEv.time.replace(':',''));
+
+  for (const ev of events) {
+    const d = ev.detail;
+    const act = ev.action;
+
+    // ── 管制指派 ──
+    if (act === '管制指派') {
+      const loc  = extractBracket(d);
+      const names = extractNames(d);
+      const task = extractTask(d);
+      const air  = extractAir(d);
+      if (loc && names.length > 0) {
+        const key = names[0];
+        state[key] = { names, loc, task, air, status: locStatus(loc, task) };
+        if (isFireLoc(loc)) fireVisible = true;
+      }
+    }
+
+    // ── 位置變更 ──
+    else if (act === '位置變更') {
+      const toL  = extractTo(d);
+      const names = extractNames(d) || extractNamesFromMove(d);
+      const air   = extractAir(d);
+      if (names.length > 0) {
+        const key = names[0];
+        if (state[key]) {
+          state[key].loc = toL || state[key].loc;
+          if (air !== null) state[key].air = air;
+          state[key].status = locStatus(state[key].loc, state[key].task);
+        }
+        if (toL && isFireLoc(toL)) fireVisible = true;
+      }
+    }
+
+    // ── 壓力更新 ──
+    else if (act === '壓力更新') {
+      const air   = extractAir(d);
+      const names = extractNamesFromPressure(d);
+      if (names.length > 0 && air !== null) {
+        const key = names[0];
+        if (state[key]) {
+          state[key].air = air;
+          // Check low pressure
+          if (air < 100) state[key].status = 'warn';
+        }
+      }
+    }
+
+    // ── 氣量警告 ──
+    else if (act === '氣量警告') {
+      const loc   = extractBracket(d);
+      const air   = extractAir(d);
+      const names = extractNamesFromWarning(d);
+      if (names.length > 0) {
+        const key = names[0];
+        if (state[key]) {
+          state[key].status = 'warn';
+          if (air !== null) state[key].air = air;
+        }
+      }
+    }
+
+    // ── 安全撤出 ──
+    else if (act === '安全撤出') {
+      const names = extractNamesFromWithdraw(d);
+      const toLoc = extractWithdrawTo(d) || '待命區';
+      const air   = extractAir(d);
+      if (names.length > 0) {
+        const key = names[0];
+        if (state[key]) {
+          state[key].loc    = toLoc;
+          state[key].status = 'out';
+          state[key].task   = '已撤出';
+          if (air !== null) state[key].air = air;
+        }
+      }
+    }
+
+    // ── 系統建置 (新增人員) ──
+    else if (act === '系統建置') {
+      // handled passively; no node to show yet
+    }
+
+    // ── 人員報到 ── (skip for visual; only affect pill count)
+
+    // Build snapshot
+    const snap = JSON.parse(JSON.stringify(state));
+    const evClass = act === '氣量警告' ? 'warn-ev'
+                  : act === '安全撤出' ? 'out-ev'
+                  : (act === '管制指派' && isFireLoc(extractBracket(d)||'')) ? 'hot-ev' : '';
+
+    kfs.push({
+      time: ev.time,
+      action: act,
+      detail: d,
+      total: ev.total,
+      standby: ev.standby,
+      hot: ev.hot,
+      snap,
+      fireVisible,
+      evClass,
+    });
+  }
+
+  return { kfs, incidentId };
+}
+
+function locStatus(loc, task) {
+  if (!loc) return 'standby';
+  if (loc === '待命區' || loc === '待命' || task === '待命集結') return 'standby';
+  if (loc.includes('第一面') && task === '幕僚作業') return 'standby';
+  if (isFireLoc(loc)) return 'hot';
+  return 'standby';
+}
+
+function isFireLoc(loc) {
+  return ['1F','2F','RF'].includes(loc) || loc.includes('面');
+}
+
+function extractNamesFromPressure(str) {
+  const m = str.match(/📲\s*([^更]+?)\s*更新氣壓/);
+  if (!m) return [];
+  return m[1].split(/[、,，]/).map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=5);
+}
+
+function extractNamesFromWarning(str) {
+  const loc = extractBracket(str);
+  // after location bracket
+  const m = str.replace(/\[[^\]]*\]/g,'').match(/([^\s(（壓力目前]+[^(（壓力]+?)\s*(?:壓力|目前)/);
+  if (!m) return [];
+  return m[1].split(/[、,，]/).map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=5);
+}
+
+function extractNamesFromWithdraw(str) {
+  const m = str.match(/🔙\s*([^從撤]+?)\s*從/);
+  if (!m) return [];
+  return m[1].split(/[、,，]/).map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=5);
+}
+
+function extractNamesFromMove(str) {
+  const m = str.match(/📍\s*([^：:[\]➔(（]+?)\s*[：:]/);
+  if (!m) return [];
+  return m[1].split(/[、,，]/).map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=5);
+}
+
+// ──────────────────────────────────────────────
+// SVG RENDERING
+// ──────────────────────────────────────────────
+const COLORS_BY_IDX = [
+  { stroke:'#FF4500', fill:'#1A0400', text:'#FF7755', sub:'#662200', marker:'ar'   },
+  { stroke:'#FFCC00', fill:'#181000', text:'#DDBB00', sub:'#664400', marker:'ay'   },
+  { stroke:'#3399FF', fill:'#000A1A', text:'#4488CC', sub:'#223355', marker:'ab'   },
+  { stroke:'#AA55FF', fill:'#0D0018', text:'#CC88FF', sub:'#442266', marker:'ab'   },
+  { stroke:'#FF6699', fill='#1A000A', text:'#FF99BB', sub:'#551133', marker:'ar'   },
+  { stroke:'#00CCAA', fill:'#001A15', text:'#33DDBB', sub:'#003322', marker:'ag'   },
+];
+
+// Assign stable colours per group leader
+const colorMap = {};
+let colorIdx = 0;
+function colorFor(key) {
+  if (!colorMap[key]) { colorMap[key] = COLORS_BY_IDX[colorIdx++ % COLORS_BY_IDX.length]; }
+  return colorMap[key];
+}
+
+function getPos(loc) {
+  if (!loc) return { x:805, y:520 };
+  // Normalise
+  const norm = loc.replace(/（/g,'(').replace(/）/g,')');
+  return POS[norm] || POS[loc] || { x:805, y:520 };
+}
+
+function renderSVG(snap, fireVisible) {
+  const layer = document.getElementById('dynamic-layer');
+  layer.innerHTML = '';
+
+  // fire zone
+  const fz = document.getElementById('fire-zone');
+  const fe = document.getElementById('fire-embers');
+  fz.setAttribute('opacity', fireVisible ? '0.55' : '0');
+  fe.setAttribute('opacity', fireVisible ? '1' : '0');
+
+  const entries = Object.entries(snap);
+  const ORIGIN = { x:805, y:520 }; // standby zone = dispatch origin
+
+  // Draw arrows first (below nodes)
+  const arrowG = document.createElementNS('http://www.w3.org/2000/svg','g');
+  entries.forEach(([key, t]) => {
+    if (t.status === 'out' || t.status === 'standby') return;
+    const col = TASK_COL[t.task] || TASK_COL['default'];
+    const pos = getPos(t.loc);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', ORIGIN.x); line.setAttribute('y1', ORIGIN.y);
+    line.setAttribute('x2', pos.x);    line.setAttribute('y2', pos.y);
+    line.setAttribute('stroke', col.stroke);
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-opacity', '0.5');
+    line.setAttribute('marker-end', `url(#${col.marker})`);
+    line.setAttribute('stroke-linecap','round');
+    arrowG.appendChild(line);
+  });
+
+  // Withdraw arrows
+  entries.forEach(([key, t]) => {
+    if (t.status !== 'out') return;
+    const fromSnap = snap[key];
+    // draw from building center to standby
+    const fPos = getPos('1F');
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', fPos.x); line.setAttribute('y1', fPos.y);
+    line.setAttribute('x2', ORIGIN.x); line.setAttribute('y2', ORIGIN.y);
+    line.setAttribute('stroke', '#00CC66');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-opacity', '0.5');
+    line.setAttribute('stroke-dasharray', '6,4');
+    line.setAttribute('marker-end', 'url(#ag)');
+    arrowG.appendChild(line);
+  });
+  layer.appendChild(arrowG);
+
+  // Draw nodes
+  entries.forEach(([key, t]) => {
+    const col = t.status === 'out'     ? { stroke:'#00CC66', fill:'#001408', text:'#44CC77', sub:'#338855' }
+              : t.status === 'warn'    ? { stroke:'#FFCC00', fill:'#151000', text:'#FFDD44', sub:'#AA8800' }
+              : t.status === 'standby' ? { stroke:'#44668855', fill:'#090B10', text:'#6688AA', sub:'#445566' }
+              : (TASK_COL[t.task] || TASK_COL['default']);
+
+    const pos = t.status === 'out' ? { x:805, y:520 }
+              : t.status === 'standby' && !['第一面(前)','第一面（前）'].includes(t.loc)
+              ? { x:805, y:520 }
+              : getPos(t.loc);
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('transform', `translate(${pos.x},${pos.y})`);
+
+    // Pulse ring
+    if (t.status === 'hot' || t.status === 'warn') {
+      const pulse = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      pulse.setAttribute('r', '28');
+      pulse.setAttribute('fill', 'none');
+      pulse.setAttribute('stroke', col.stroke);
+      pulse.setAttribute('stroke-width', '2');
+      pulse.setAttribute('opacity', '.3');
+      const aR = document.createElementNS('http://www.w3.org/2000/svg','animate');
+      aR.setAttribute('attributeName','r'); aR.setAttribute('values','28;40;28');
+      aR.setAttribute('dur', t.status==='warn'?'1s':'1.8s'); aR.setAttribute('repeatCount','indefinite');
+      const aO = document.createElementNS('http://www.w3.org/2000/svg','animate');
+      aO.setAttribute('attributeName','opacity'); aO.setAttribute('values','.3;0;.3');
+      aO.setAttribute('dur', t.status==='warn'?'1s':'1.8s'); aO.setAttribute('repeatCount','indefinite');
+      pulse.appendChild(aR); pulse.appendChild(aO);
+      g.appendChild(pulse);
+    }
+
+    // Main circle
+    const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circ.setAttribute('r', '26');
+    circ.setAttribute('fill', col.fill);
+    circ.setAttribute('stroke', col.stroke);
+    circ.setAttribute('stroke-width', '1.8');
+    g.appendChild(circ);
+
+    // Warn ring
+    if (t.status === 'warn') {
+      const wring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      wring.setAttribute('r','36'); wring.setAttribute('fill','none');
+      wring.setAttribute('stroke','#FFCC00'); wring.setAttribute('stroke-width','2');
+      wring.setAttribute('stroke-dasharray','5,4'); wring.setAttribute('opacity','.7');
+      const aT = document.createElementNS('http://www.w3.org/2000/svg','animateTransform');
+      aT.setAttribute('attributeName','transform'); aT.setAttribute('type','rotate');
+      aT.setAttribute('from',`0 0 0`); aT.setAttribute('to',`360 0 0`);
+      aT.setAttribute('dur','2s'); aT.setAttribute('repeatCount','indefinite');
+      wring.appendChild(aT); g.appendChild(wring);
+      const wIcon = document.createElementNS('http://www.w3.org/2000/svg','text');
+      wIcon.setAttribute('y','-46'); wIcon.setAttribute('text-anchor','middle');
+      wIcon.setAttribute('font-size','14'); wIcon.textContent='⚠';
+      g.appendChild(wIcon);
+    }
+
+    // Names
+    const lineH = t.names.length > 1 ? -6 : 1;
+    t.names.slice(0,2).forEach((n,i) => {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('y', String(lineH + i*12));
+      txt.setAttribute('text-anchor','middle');
+      txt.setAttribute('font-size','11');
+      txt.setAttribute('fill', col.text);
+      txt.setAttribute('font-family','Noto Sans TC,sans-serif');
+      txt.setAttribute('font-weight','700');
+      txt.textContent = n;
+      g.appendChild(txt);
+    });
+
+    // Task sub-label
+    if (t.task && t.task !== '待命集結') {
+      const sub = document.createElementNS('http://www.w3.org/2000/svg','text');
+      sub.setAttribute('y', t.names.length > 1 ? '20' : '14');
+      sub.setAttribute('text-anchor','middle');
+      sub.setAttribute('font-size','8');
+      sub.setAttribute('fill', col.sub || '#445');
+      sub.setAttribute('font-family','Share Tech Mono,monospace');
+      sub.textContent = t.task;
+      g.appendChild(sub);
+    }
+
+    // Air gauge
+    if (t.air !== null && t.status !== 'standby') {
+      const gaugeY = t.names.length > 1 ? 32 : 26;
+      const gW = 50, gH = 12;
+      const gX = -gW/2;
+      const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      bg.setAttribute('x',gX); bg.setAttribute('y',gaugeY);
+      bg.setAttribute('width',gW); bg.setAttribute('height',gH);
+      bg.setAttribute('rx','2'); bg.setAttribute('fill','#080C10'); bg.setAttribute('stroke','#1A2030');
+      g.appendChild(bg);
+      const pct = Math.max(0,Math.min(1,t.air/300));
+      const fc = pct>.5?'#00CC66':pct>.3?'#FFAA00':'#FF2222';
+      const bar = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      bar.setAttribute('x',String(gX+1)); bar.setAttribute('y',String(gaugeY+1));
+      bar.setAttribute('width',String(Math.round((gW-2)*pct))); bar.setAttribute('height',String(gH-2));
+      bar.setAttribute('rx','1'); bar.setAttribute('fill',fc);
+      g.appendChild(bar);
+      const gtxt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      gtxt.setAttribute('x','0'); gtxt.setAttribute('y',String(gaugeY+9));
+      gtxt.setAttribute('text-anchor','middle'); gtxt.setAttribute('font-size','8');
+      gtxt.setAttribute('fill','#fff'); gtxt.setAttribute('font-family','Share Tech Mono,monospace');
+      gtxt.textContent = t.air+'b';
+      g.appendChild(gtxt);
+    }
+
+    layer.appendChild(g);
+  });
+}
+
+// ──────────────────────────────────────────────
+// PILL RENDERING
+// ──────────────────────────────────────────────
+function renderPills(snap) {
+  const c = document.getElementById('pills'); c.innerHTML='';
+  const order = { hot:0, warn:1, standby:2, out:3 };
+  const entries = Object.entries(snap).sort((a,b)=>(order[a[1].status]||9)-(order[b[1].status]||9));
+  entries.forEach(([ key, t ], i) => {
+    const d = document.createElement('div');
+    d.className = 'team-pill ' + (t.status==='out'?'out':t.status==='warn'?'warn':t.status==='hot'?'hot':'standby');
+    d.style.transitionDelay = (i*.04)+'s';
+    let ah = '';
+    if (t.air !== null) {
+      const pct = Math.max(0,Math.min(1,t.air/300));
+      const cl = pct>.5?'hi':pct>.3?'mi':'lo';
+      const col = pct>.5?'#00CC66':pct>.3?'#FFAA00':'#FF2222';
+      ah = `<div class="air-mini">
+        <div class="air-v" style="color:${col}">${t.air}<span style="font-size:7px">b</span></div>
+        <div class="air-t"><div class="air-b ${cl}" style="width:${pct*100}%"></div></div>
+      </div>`;
+    }
+    d.innerHTML = `<div class="pill-names">
+      ${t.names.map(n=>`<div class="pill-name">${n}</div>`).join('')}
+      <div class="pill-sub">${t.loc}${t.task?' · '+t.task:''}</div>
+    </div>${ah}`;
+    c.appendChild(d);
+    requestAnimationFrame(()=>d.classList.add('show'));
+  });
+}
+
+// ──────────────────────────────────────────────
+// PLAYBACK ENGINE
+// ──────────────────────────────────────────────
+let KFS = [], cur = -1, playing = false, timer = null;
+
+function applyKF(idx) {
+  const kf = KFS[idx];
+  renderSVG(kf.snap, kf.fireVisible);
+  renderPills(kf.snap);
+  document.getElementById('clock').textContent = kf.time;
+  document.getElementById('progFill').style.width = ((idx+1)/KFS.length*100)+'%';
+  document.getElementById('stepLbl').textContent = (idx+1)+' / '+KFS.length;
+  document.getElementById('ticker').innerHTML =
+    `<div class="ev ${kf.evClass}">${kf.detail}</div>`;
+}
+
+function step() {
+  if (!playing) return;
+  if (cur >= KFS.length-1) {
+    playing=false;
+    document.getElementById('playBtn').textContent='▶ 重播';
+    document.getElementById('playBtn').classList.remove('on');
+    return;
+  }
+  cur++; applyKF(cur);
+  timer = setTimeout(step, parseInt(document.getElementById('spd').value));
+}
+
+function togglePlay() {
+  playing=!playing;
+  const btn=document.getElementById('playBtn');
+  if(playing){
+    btn.textContent='⏸ 暫停'; btn.classList.add('on');
+    if(cur>=KFS.length-1){ resetAnim(); playing=true; btn.textContent='⏸ 暫停'; btn.classList.add('on'); }
+    step();
+  } else {
+    btn.textContent='▶ 播放'; btn.classList.remove('on'); clearTimeout(timer);
+  }
+}
+
+function resetAnim() {
+  clearTimeout(timer); playing=false; cur=-1;
+  document.getElementById('playBtn').textContent='▶ 播放';
+  document.getElementById('playBtn').classList.remove('on');
+  document.getElementById('progFill').style.width='0%';
+  document.getElementById('stepLbl').textContent='0 / '+KFS.length;
+  if(KFS.length>0) document.getElementById('clock').textContent=KFS[0].time;
+  document.getElementById('pills').innerHTML='';
+  document.getElementById('ticker').innerHTML='<div class="ev">— —</div>';
+  document.getElementById('dynamic-layer').innerHTML='';
+  document.getElementById('fire-zone').setAttribute('opacity','0');
+  document.getElementById('fire-embers').setAttribute('opacity','0');
+}
+
+function seekProg(e) {
+  const r=document.getElementById('prog').getBoundingClientRect();
+  const t=Math.min(KFS.length-1,Math.floor((e.clientX-r.left)/r.width*KFS.length));
+  clearTimeout(timer);
+  for(let i=0;i<=t;i++){cur=i;applyKF(i);}
+  if(playing) timer=setTimeout(step,parseInt(document.getElementById('spd').value));
+}
+
+// ──────────────────────────────────────────────
+// ENTRY POINTS
+// ──────────────────────────────────────────────
+function generate() {
+  const raw = document.getElementById('paste-input').value;
+  document.getElementById('parse-error').textContent='';
+  try {
+    const events = parseTSV(raw);
+    const { kfs, incidentId } = buildKeyframes(events);
+    KFS = kfs;
+    // Reset colour map for new incident
+    Object.keys(colorMap).forEach(k=>delete colorMap[k]);
+    colorIdx = 0;
+
+    // detect incident name from data
+    const firstTime = events[0].time;
+    document.getElementById('hdr-id').textContent = '火警_'+firstTime.replace(':','');
+    document.getElementById('hdr-sub').textContent = '台東縣消防局';
+
+    document.getElementById('screen-paste').style.display='none';
+    document.getElementById('screen-anim').style.display='flex';
+    resetAnim();
+  } catch(e) {
+    document.getElementById('parse-error').textContent = '⚠ '+e.message;
+  }
+}
+
+function loadDemo() {
+  document.getElementById('paste-input').value = DEMO;
+}
+
+function backToPaste() {
+  clearTimeout(timer); playing=false;
+  document.getElementById('screen-anim').style.display='none';
+  document.getElementById('screen-paste').style.display='flex';
+}
+
+// keyboard shortcut
+document.addEventListener('keydown', e => {
+  if(document.getElementById('screen-anim').style.display!=='none') {
+    if(e.code==='Space'){ e.preventDefault(); togglePlay(); }
+    if(e.code==='ArrowRight' && cur<KFS.length-1){ clearTimeout(timer); cur++; applyKF(cur); if(playing) timer=setTimeout(step,parseInt(document.getElementById('spd').value)); }
+    if(e.code==='ArrowLeft'  && cur>0){ clearTimeout(timer); cur--; applyKF(cur); if(playing) timer=setTimeout(step,parseInt(document.getElementById('spd').value)); }
+  }
+});
+</script>
+</body>
+</html>
