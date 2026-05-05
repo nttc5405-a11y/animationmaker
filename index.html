@@ -25,9 +25,7 @@
             border: 1px solid rgba(255,255,255,0.25);
             border-radius: 8px; padding: 4px 7px;
             margin-top: 4px; font-size: 11px;
-            animation: cardIn 0.25s ease;
         }
-        @keyframes cardIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 
         .task-tag { padding: 1px 5px; border-radius: 4px; color: white; font-weight: 900; font-size: 9px; margin-right: 3px; vertical-align: middle; }
         .task-滅 { background-color: #ef4444; } .task-搜 { background-color: #f97316; }
@@ -217,6 +215,7 @@ let playSpeed  = 1;
 let playTimer  = null;
 let allSectors = [];
 let _uidCnt    = 0;
+let _sectorCache = {}; // 每個 sector 上次渲染的 HTML，用於 diff 避免不必要的 DOM 操作
 
 // ── Audio (可選，點擊頁面後初始化) ────────
 let audioCtx;
@@ -442,13 +441,27 @@ function sectorClass(loc) {
 
 function makeSector(loc) {
     const el = document.createElement('div');
-    el.id        = sid(loc);
-    el.className = `sector-btn ${sectorClass(loc)} w-full`;
-    el.innerHTML = `<div class="text-[9px] font-black opacity-40 mb-1">${loc}</div>`;
+    el.id           = sid(loc);
+    el.dataset.loc  = loc;   // diff 用
+    el.className    = `sector-btn ${sectorClass(loc)} w-full`;
+    el.innerHTML    = `<div class="text-[9px] font-black opacity-40 mb-1 sector-label">${loc}</div>`;
     return el;
 }
 
+function buildCardHtml(t) {
+    const ts       = TASK_SHORT[t.task] || t.task?.charAt(0) || '?';
+    const airV     = t.air;
+    const airColor = airV == null ? 'text-slate-500'
+                   : airV <= 50  ? 'text-red-400 font-black'
+                   : airV <= 100 ? 'text-orange-400 font-black'
+                   : 'text-emerald-400';
+    const airText  = airV != null ? `<span class="font-mono text-xs ${airColor}">${airV}b</span>` : '';
+    const extras   = t.members.slice(1).join('、');
+    return `<div class="team-card"><span class="task-tag task-${ts}">${ts}</span><span class="text-white font-black text-xs">${t.leader}</span> ${airText}${extras ? `<div class="text-[9px] text-slate-400 mt-0.5 truncate">${extras}</div>` : ''}</div>`;
+}
+
 function buildMap() {
+    _sectorCache = {}; // 重置 diff 快取
     const grid  = document.getElementById('map-grid');
     grid.innerHTML = '';
     const inside = getInsideSectors();
@@ -488,31 +501,26 @@ function buildMap() {
     r3r.appendChild(makeSector('待命區')); grid.appendChild(r3r);
 }
 
-// ── 渲染地圖狀態 ─────────────────────────
+// ── 渲染地圖狀態（diff：只更新有變化的 sector）────
 function renderMap(state) {
-    // 清除所有 team-card
-    document.querySelectorAll('.team-card').forEach(e => e.remove());
-
+    // 先彙整每個位置應顯示的 HTML
+    const newHtml = {};
     for (const uid in state.teams) {
         const t = state.teams[uid];
         if (!t.active) continue;
-        const secEl = document.getElementById(sid(t.location));
-        if (!secEl) continue;
-
-        const ts   = TASK_SHORT[t.task] || t.task?.charAt(0) || '?';
-        const airV = t.air;
-        const airColor = airV === null || airV === undefined ? 'text-slate-500'
-                       : airV <= 50  ? 'text-red-400 font-black'
-                       : airV <= 100 ? 'text-orange-400 font-black'
-                       : 'text-emerald-400';
-        const airText = airV !== null && airV !== undefined ? `<span class="font-mono text-xs ${airColor}">${airV}b</span>` : '';
-        const extras  = t.members.slice(1).join('、');
-
-        const card = document.createElement('div');
-        card.className = 'team-card';
-        card.innerHTML = `<span class="task-tag task-${ts}">${ts}</span><span class="text-white font-black text-xs">${t.leader}</span> ${airText}${extras ? `<div class="text-[9px] text-slate-400 mt-0.5 truncate">${extras}</div>` : ''}`;
-        secEl.appendChild(card);
+        newHtml[t.location] = (newHtml[t.location] || '') + buildCardHtml(t);
     }
+
+    // 逐一比對快取，只更新不同的 sector
+    document.querySelectorAll('.sector-btn[data-loc]').forEach(secEl => {
+        const loc  = secEl.dataset.loc;
+        const html = newHtml[loc] || '';
+        if (_sectorCache[loc] === html) return; // 沒變就跳過
+        _sectorCache[loc] = html;
+        // 只移除 team-card，保留 sector-label
+        secEl.querySelectorAll('.team-card').forEach(e => e.remove());
+        if (html) secEl.insertAdjacentHTML('beforeend', html);
+    });
 
     // MAYDAY
     if (state.mayday) {
